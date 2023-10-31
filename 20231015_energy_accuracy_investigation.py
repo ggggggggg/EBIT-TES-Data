@@ -282,9 +282,9 @@ data.plotHist(attr="energy3", binEdges = np.arange(500,2000), states=fine_cal_st
 data.linefit(798, attr="energy3", states=fine_cal_states, dlo=dlo, dhi=dhi)
 
 
-# final recalibration step... really probably makes things worse i'd guess since we have no
-# low energy calibratiors and it leads to a huge gain kink... see the gain plot
-# but this spectrum a
+# final recalibration step... really needs a lower energy line to work better
+# which point we should be able to use the standard techniques assuming we actually have
+# good drift correction
 def addoldcalpoint(newcal, oldcal, result, name):
     efit = result.params["peak_ph"].value
     efit_err = result.params["peak_ph"].stderr
