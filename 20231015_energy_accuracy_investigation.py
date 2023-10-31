@@ -143,7 +143,9 @@ for ds in data.values()[:2]:
 plt.legend(labels=[f"channel {ds.channum}" for ds in data.values()[:8]])
 plt.title(f"states={fine_cal_states} for channels in legends {data.shortName}")
 
-# plt.close("all")
+# trying to just align the channels based on lining up lines and forcing the 
+# calibration to be a polynominal
+# it does work, but not as we'll as i'd hoped
 def align_fit(channum2, elo, ehi, doplot):
     # elo, ehi = 500, 2000
     # data.cutAdd("cutEnergyROI",lambda energy: np.logical_and(energy>elo, energy<ehi), overwrite=True)
@@ -256,9 +258,11 @@ for ds in data.values():
 data.plotHist(np.arange(0,40000,10), attr="filtValueDCPCTC_chan1", states=fine_cal_states)
 filtValueDCPCTC_chan1_cal = data[1].recipes["energyDC2"].f
 for ds in data.values():
-    ds.recipes.add("energy3", 
-                   lambda filtValueDCPCTC_chan1: filtValueDCPCTC_chan1_cal(filtValueDCPCTC_chan1),
-                   overwrite=True)
+    ds.recipes.add("energy3", filtValueDCPCTC_chan1_cal,
+                         ["filtValueDCPCTC_chan1"], overwrite=True)
+    # ds.recipes.add("energy3", 
+    #                lambda filtValueDCPCTC_chan1: filtValueDCPCTC_chan1_cal(filtValueDCPCTC_chan1),
+    #                overwrite=True)
 result_alk3 = data.linefit("AlKAlpha", attr="energy3", states=fine_cal_states, dlo=dlo, dhi=dhi)
 result_mgk3 = data.linefit("MgKAlpha", attr="energy3", states=fine_cal_states, dlo=dlo, dhi=dhi)
 result_sik3 = data.linefit("SiKAlpha", attr="energy3", states=fine_cal_states, dlo=dlo, dhi=dhi)
@@ -274,4 +278,41 @@ _, counts_o2p3 = data.hist(attr="energy3",binEdges=bin_edges_o2p3,
                           states=fine_cal_states)
 result_o2p3 = model_o2p3.fit(counts_o2p3, bin_centers = midpoints(bin_edges_o2p3), params=params_o2p3)
 result_o2p3.plotm()
-data.plotHist(attr="energy3"), binEdges = np.arange(500,2000), states=fine_cal_states)
+data.plotHist(attr="energy3", binEdges = np.arange(500,2000), states=fine_cal_states)
+data.linefit(798, attr="energy3", states=fine_cal_states, dlo=dlo, dhi=dhi)
+
+
+# final recalibration step... really probably makes things worse i'd guess since we have no
+# low energy calibratiors and it leads to a huge gain kink... see the gain plot
+# but this spectrum a
+def addoldcalpoint(newcal, oldcal, result, name):
+    efit = result.params["peak_ph"].value
+    efit_err = result.params["peak_ph"].stderr
+    ph = oldcal.energy2ph(efit)
+    ph_err = efit_err/oldcal.energy2dedph(efit)
+    true_e = result.model.spect.peak_energy
+    true_e_unc = result.model.spect.position_uncertainty
+    newcal.add_cal_point(ph, true_e, pht_error=ph_err, e_error=true_e_unc)
+
+for ds in data.values():
+    oldcal = ds.recipes["energy3"].f
+    cal = mass.calibration.EnergyCalibration(curvetype="gain", approximate=True)
+    addoldcalpoint(cal, oldcal, result_alk3, "AlKAlpha")
+    addoldcalpoint(cal, oldcal, result_mgk3, "MgKAlpha")
+    addoldcalpoint(cal, oldcal, result_sik3, "SiKAlpha")
+    ds.recipes.add("energy4", cal,
+                         ["filtValueDCPCTC_chan1"], overwrite=True)
+    # ds.recipes.add("energy4", lambda filtValueDCPCTC_chan1: cal(filtValueDCPCTC_chan1), 
+    #                overwrite=True)
+result_alk4 = data.linefit("AlKAlpha", attr="energy4", states=fine_cal_states, dlo=dlo, dhi=dhi)
+human_lang_result(result_alk4)
+result_mgk4 = data.linefit("MgKAlpha", attr="energy4", states=fine_cal_states, dlo=dlo, dhi=dhi)
+human_lang_result(result_mgk4)
+result_sik4 = data.linefit("SiKAlpha", attr="energy4", states=fine_cal_states, dlo=dlo, dhi=dhi)
+human_lang_result(result_sik4)
+cal.plotgain()
+
+fine_cal_states_short="".join(fine_cal_states)
+filename = data.outputHDF5Filename(outputDir="output",addToName=f"energy4_hists_onlyuse{fine_cal_states_short}")
+with h5py.File(filename,"w") as h5:
+    data.histsToHDF5(h5, binEdges=np.arange(400,2000,0.8), attr="energy4")    
